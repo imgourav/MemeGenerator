@@ -43,16 +43,37 @@ const Meme = ({ meme, setMeme }) => {
         setShowError(false);
 
         try {
-            // POST to our secure serverless proxy
-            const resp = await fetch('/api/caption', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    template_id: form.template_id,
-                    boxes: (form.boxes || []).map((b) => ({ text: b?.text ?? '' })),
-                })
-            });
-            const data = await resp.json();
+            // Try serverless proxy first, fallback to direct API for development
+            let resp, data;
+            
+            try {
+                resp = await fetch('/api/caption', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        template_id: form.template_id,
+                        boxes: (form.boxes || []).map((b) => ({ text: b?.text ?? '' })),
+                    })
+                });
+                data = await resp.json();
+            } catch (apiError) {
+                // Fallback to direct Imgflip API for local development
+                console.log('API route not available, using direct Imgflip API...');
+                const params = new URLSearchParams();
+                params.append('template_id', form.template_id);
+                params.append('username', import.meta.env.VITE_IMGFLIP_USERNAME || 'imgflip_hubot');
+                params.append('password', import.meta.env.VITE_IMGFLIP_PASSWORD || 'imgflip_hubot');
+                
+                (form.boxes || []).forEach((box, i) => {
+                    params.append(`boxes[${i}][text]`, box?.text ?? '');
+                });
+
+                resp = await fetch('https://api.imgflip.com/caption_image', {
+                    method: 'POST',
+                    body: params
+                });
+                data = await resp.json();
+            }
 
             setIsLoading(false);
             if (data?.success && data?.data?.url) {
